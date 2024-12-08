@@ -1,7 +1,7 @@
 """
 title: Think-Respond Chain Pipe, o1 at home
 author: latent-variable
-github: https://github.com/latent-variable
+github: https://github.com/latent-variable/o1_at_home
 version: 0.2.1
 Descrition: Think-Respond pipeline that has an internal reasoning steps and another for producing a final response based on the reasoning.
 
