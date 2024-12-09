@@ -27,6 +27,7 @@ This pipe is lightweight and doesn't require an additional pipeline server to ru
   - **Select Models:** Choose your thinking and response models.
   - **Show Reasoning:** Decide whether to display the reasoning process.
   - **Set Thinking Time:** Specify the maximum allowed thinking time (in seconds).
+  - **Toggle openAI api or ollama** Specify which api to use
 
 ### 4. Save and Apply
 - Once customized, save your settings. The pipe should now appear in your dropdown list.
