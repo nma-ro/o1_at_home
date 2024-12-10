@@ -243,6 +243,46 @@ class Pipe:
             if response and hasattr(response, "close"):
                 await response.close()
 
+    async def run_step(
+        self,
+        model: str,
+        messages: list,
+        prompt: str,
+        thinking: bool,
+        step_name: str,
+        title_name: str,
+        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+    ) -> str:
+        messages = json.loads(json.dumps(messages))
+        messages[-1] = {
+            "role": "user",
+            "content": prompt,
+        }
+        
+        if not thinking or self.valves.ENABLE_SHOW_THINKING_TRACE:
+            await __event_emitter__(
+                {
+                    "type": "message",
+                    "data": {"content": "\n### "+title_name+"\n", "role": "assistant-thinking" if thinking else "assistant"},
+                }
+            )
+
+        response_text = ""
+        async for chunk in self.stream_response(
+            model.strip(), messages, thinking, __event_emitter__
+        ):
+            response_text += chunk
+            if not thinking or self.valves.ENABLE_SHOW_THINKING_TRACE:
+                await __event_emitter__(
+                    {"type": "message", "data": {"content": chunk, "role": "assistant-thinking" if thinking else "assistant"}}
+                )
+            else:
+                await __event_emitter__(
+                    {"type": "status", "data": {"description": f"{step_name} ({len(response_text)} chars)", "done": False}}
+                )
+        
+        return response_text.strip()
+
     async def run_thinking(
         self,
         k: int,
@@ -253,15 +293,11 @@ class Pipe:
         __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
     ) -> str:
         # Deep copy the messages to avoid changing the original
-        messages = json.loads(json.dumps(messages))
         thinking_with = ""
         if n == 1:
             thinking_with = f"with {model}"
         else:
             thinking_with = f"with {model} {k}/{n}"
-        await __event_emitter__(
-            {"type": "status", "data": {"description": f"Thinking {thinking_with}", "done": False}}
-        )
 
         prompt = "You are a reasoning model.\n"
         prompt += "Think carefully about the user's request and output your reasoning steps.\n"
@@ -271,40 +307,9 @@ class Pipe:
         prompt += "First rephrase the user prompt, then answer using multiple thinking-path to give all possible answers.\n"
         prompt += f"User Query: {query}"
 
-        # We will stream the reasoning steps. The reasoning prompt:
-        thinking_messages = {
-            "role": "user",
-            "content": prompt,
-        }
-        # replace last message
-        messages[-1] = thinking_messages
-
-        reasoning = ""
-        thinking = True
-        if self.valves.ENABLE_SHOW_THINKING_TRACE and n != 1:
-            await __event_emitter__(
-                {
-                    "type": "message",
-                    "data": {"content": "\n### Thinking with "+model+"\n", "role": "assistant-thinking"},
-                }
-            )
-        async for chunk in self.stream_response(
-            model.strip(), messages, thinking, __event_emitter__
-        ):
-            reasoning += chunk
-            reasoning_chars = len(reasoning)
-            if self.valves.ENABLE_SHOW_THINKING_TRACE:
-                # Emit chunk as a "thinking" type message
-                await __event_emitter__(
-                    {
-                        "type": "message",
-                        "data": {"content": chunk, "role": "assistant-thinking"},
-                    }
-                )
-            else:
-                    await __event_emitter__(
-                        {"type": "status", "data": {"description": f"Thinking {thinking_with} ({reasoning_chars} chars)", "done": False}}
-                    )
+        reasoning = await self.run_step(
+            model, messages, prompt, True, f"Thinking {thinking_with}", f"`{model}` thoughts", __event_emitter__
+        )
 
         await __event_emitter__(
             {
@@ -313,7 +318,7 @@ class Pipe:
             }
         )
         await asyncio.sleep(0.2)
-        return reasoning.strip()
+        return reasoning
 
     async def run_responding(
         self,
@@ -321,7 +326,7 @@ class Pipe:
         query: str,
         reasonings: list,
         __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
-    ) -> Dict[str, Any]:
+    ) -> str:
         await __event_emitter__(
             {
                 "type": "status",
@@ -331,33 +336,20 @@ class Pipe:
         prompt = "Here is some internal reasoning to guide your response:\n"
         prompt += f"<reasoning>{reasonings[0]}<reasoning-end>\n"
         for reasoning in reasonings[1:]:
-            prompt = "Here is some other internal reasoning to guide your response:\n"
+            prompt += "Here is some other internal reasoning to guide your response:\n"
             prompt += f"<reasoning>{reasoning}<reasoning-end>\n"
         prompt += f"Use this reasoning to respond in concise and helpful manner to the user's query: {query}"
 
-        responding_messages = {
-            "role": "user",
-            "content": prompt
-        }
-        # replace last message
-        messages[-1] = responding_messages
-
-        response_text = "\n\n### Response:\n"
-        await __event_emitter__(
-            {"type": "message", "data": {"content": response_text, "role": "assistant"}}
+        response_text = await self.run_step(
+            self.valves.RESPONDING_MODEL.strip(), messages, prompt, False, "Generating response", "Response", __event_emitter__
         )
 
-        thinking = False
-        async for chunk in self.stream_response(
-            self.valves.RESPONDING_MODEL.strip(), messages, thinking, __event_emitter__
-        ):
-            response_text += chunk
-            # Emit response chunks as assistant message
-            await __event_emitter__(
-                {"type": "message", "data": {"content": chunk, "role": "assistant"}}
-            )
+        # await __event_emitter__(
+        #     {"type": "message", "data": {"content": "\n\n### Response:\n" + response_text, "role": "assistant"}}
+        # )
 
         await asyncio.sleep(0.2)
+        return response_text
 
     async def pipe(
         self,
