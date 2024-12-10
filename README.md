@@ -42,21 +42,21 @@ This pipe is lightweight and doesn't require an additional pipeline server to ru
 
 ## TODO:
 ### Completed
-- **Support for OpenAI API:** Fully integrated for reasoning and response.
-- **Support for Multiple Models:** Select different models for thinking and responding.
-- **Streaming Responses:** Added streaming response support for real-time interaction.
+- [x] **Support for OpenAI API:** Fully integrated for reasoning and response.
+- [x] **Support for Multiple Models:** Select different models for thinking and responding.
+- [x] **Streaming Responses:** Added streaming response support for real-time interaction.
 
 ### In Progress
-- **Support Multiple Models from Multiple APIs:** Allow simultaneous use of OpenAI, Ollama, and other APIs.
-- **Customizable APIs per Task:** Enable model/API selection based on specific tasks.
+- [ ] **Support Multiple Models from Multiple APIs:** Allow simultaneous use of OpenAI, Ollama, and other APIs.
+- [ ] **Customizable APIs per Task:** Enable model/API selection based on specific tasks.
 
 ### Future Enhancements
-- **Claude Integration:** Add support for Anthropic's Claude models.
-- **Additional APIs:** Expand support for APIs like Cohere, Hugging Face, and others.
-- **Enhanced Error Logging:** Provide more detailed insights for API issues.
-- **Load Balancing:** Add logic to distribute requests across APIs/models for better performance.
-- **Advanced Reasoning:** Incorporate features for context retention across sessions.
-- **Interactive Debugging Tools:** Allow real-time debugging for reasoning steps.
+- [ ] **Claude Integration:** Add support for Anthropic's Claude models.
+- [ ] **Additional APIs:** Expand support for APIs like Cohere, Hugging Face, and others.
+- [ ] **Enhanced Error Logging:** Provide more detailed insights for API issues.
+- [ ] **Load Balancing:** Add logic to distribute requests across APIs/models for better performance.
+- [ ] **Advanced Reasoning:** Incorporate features for context retention across sessions.
+- [ ] **Interactive Debugging Tools:** Allow real-time debugging for reasoning steps.
 
 ---
 
