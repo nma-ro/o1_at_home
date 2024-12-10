@@ -3,19 +3,19 @@ title: Think-Respond Chain Pipe, o1 at home
 author: latent-variable
 github: https://github.com/latent-variable/o1_at_home
 version: 0.3.1
-Descrition: Think-Respond pipeline that has an internal reasoning steps and another for producing a final response based on the reasoning.
+Descrition: Think-Respond pipe that has an internal reasoning steps and another for producing a final response based on the reasoning.
             Now supports openAI api along with ollama, you can mix and match models 
 
 Instructions: 
-To use the o1 at home pipeline, follow these steps:
+To use the o1 at home pipe, follow these steps:
 
 Add the Pipe Manifold:
-Navigate to the Admin Panel and add the pipeline to the list of available "Functions" using the '+'.
+Navigate to the Admin Panel and add the pipe to the list of available "Functions" using the '+'.
 This is not a "pipeline", Ensure you are using Function tab. 
 If you are copying the code you might need ot give it name and descriprition 
 
 Enable the Pipe Manifold:
-After adding it, enable the pipeline to make it active.
+After adding it, enable the pipe to make it active.
 
 Customize Settings:
 Use the configuration menu (accessed via the settings cog) to tailor the pipeline to your needs:
@@ -26,7 +26,7 @@ Save and Apply:
 Once configured, save your settings to apply the changes.
 You should now have o1 at home in your dorp down. 
 
-These steps ensure the pipeline is set up correctly and functions according to your requirements.
+These steps ensure the pipe is set up correctly and functions according to your requirements.
 """
 
 import json
