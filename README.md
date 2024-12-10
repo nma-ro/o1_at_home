@@ -2,7 +2,6 @@
 
 ![Think-Respond Chain Pipe](./example.png "o1 at home Pipe")
 
-
 ## Description
 The **o1 at home** pipe is a Manifold pipe designed to process user queries using a two-step process:
 1. **Thinking Step:** Generates internal reasoning based on the query.
@@ -27,7 +26,7 @@ This pipe is lightweight and doesn't require an additional pipeline server to ru
   - **Select Models:** Choose your thinking and response models.
   - **Show Reasoning:** Decide whether to display the reasoning process.
   - **Set Thinking Time:** Specify the maximum allowed thinking time (in seconds).
-  - **Toggle openAI api or ollama** Specify which api to use
+  - **Toggle OpenAI API or Ollama:** Specify which API to use.
 
 ### 4. Save and Apply
 - Once customized, save your settings. The pipe should now appear in your dropdown list.
@@ -38,6 +37,26 @@ This pipe is lightweight and doesn't require an additional pipeline server to ru
 - **Error Checking:** Notifies you if a model ID is invalid.
 - **Reasoning Visibility:** Toggle to show or hide reasoning steps.
 - **Time Limits:** Set maximum reasoning time to suit your needs.
+
+---
+
+## TODO:
+### Completed
+- **Support for OpenAI API:** Fully integrated for reasoning and response.
+- **Support for Multiple Models:** Select different models for thinking and responding.
+- **Streaming Responses:** Added streaming response support for real-time interaction.
+
+### In Progress
+- **Support Multiple Models from Multiple APIs:** Allow simultaneous use of OpenAI, Ollama, and other APIs.
+- **Customizable APIs per Task:** Enable model/API selection based on specific tasks.
+
+### Future Enhancements
+- **Claude Integration:** Add support for Anthropic's Claude models.
+- **Additional APIs:** Expand support for APIs like Cohere, Hugging Face, and others.
+- **Enhanced Error Logging:** Provide more detailed insights for API issues.
+- **Load Balancing:** Add logic to distribute requests across APIs/models for better performance.
+- **Advanced Reasoning:** Incorporate features for context retention across sessions.
+- **Interactive Debugging Tools:** Allow real-time debugging for reasoning steps.
 
 ---
 

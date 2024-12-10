@@ -2,7 +2,7 @@
 title: Think-Respond Chain Pipe, o1 at home
 author: latent-variable
 github: https://github.com/latent-variable/o1_at_home
-version: 0.3.0
+version: 0.3.1
 Descrition: Think-Respond pipeline that has an internal reasoning steps and another for producing a final response based on the reasoning.
             Now supports openAI api along with ollama, you can mix and match models 
 
