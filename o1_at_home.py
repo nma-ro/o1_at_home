@@ -324,7 +324,7 @@ class Pipe:
         prompt += "From the user query, the generated response, and the reflection on the response,\n"
         prompt += "Rewrite an improved response that addresses the user's query more effectively.\n"
         prompt += "The user doesn't see the reflection or the previous response so do not state it.\n"
-        prompt += "Be as consise as possible and include all the important information.\n"
+        prompt += "Include all the important information and key reasoning steps.\n"
         prompt += f"User Query: {query}\n"
         prompt += f"<response>{response}<response-end>\n"
         prompt += f"<reflection>{reflection}<reflection-end>"
@@ -359,6 +359,23 @@ class Pipe:
 
         await asyncio.sleep(0.2)
         return response_text
+    
+    async def run_thinking_pipeline(
+        self,
+        k: int,
+        models: list,
+        messages: list,
+        query: str,
+        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+    ) -> str:
+        response = await self.run_thinking(k + 1, len(models), models[k], messages, query, __event_emitter__)
+        
+        reflection = await self.run_reflection(messages, query, response, __event_emitter__)
+        response = await self.run_improving(messages, query, response, reflection, False, __event_emitter__)
+        
+        return response
+        
+        
 
     async def pipe(
         self,
@@ -380,18 +397,11 @@ class Pipe:
             # Run the "thinking" step
             #Clone the messages to avoid changing the original
             models = self.valves.THINKING_MODEL.split(",")
-            reasonings = [await self.run_thinking(model + 1, len(models), models[model], messages, query, __event_emitter__) for model in range(len(models))]
+            reasonings = [await self.run_thinking_pipeline(model, models, messages, query, __event_emitter__) for model in range(len(models))]
             thought_duration = int(time() - self.start_thought_time)
 
             # Run the "responding" step using the reasoning
-            response = await self.run_responding(messages, query, reasonings, False, __event_emitter__)
-            
-            for _ in range(2):
-                reflection = await self.run_reflection(messages, query, response, __event_emitter__)
-                response = await self.run_improving(messages, query, response, reflection, False, __event_emitter__)
-            
-            reflection = await self.run_reflection(messages, query, response, __event_emitter__)
-            await self.run_improving(messages, query, response, reflection, True, __event_emitter__)
+            response = await self.run_responding(messages, query, reasonings, True, __event_emitter__)
 
             if self.max_thinking_time_reached:
                 await self.set_status_end(f"Thought for max allowed time of {thought_duration} seconds", __event_emitter__)
