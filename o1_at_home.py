@@ -3,7 +3,8 @@ title: Think-Respond Chain Pipe, o1 at home
 author: latent-variable
 github: https://github.com/latent-variable/o1_at_home
 open-webui: https://openwebui.com/f/latentvariable/o1_at_home/
-version: 0.3.3
+Blog post: https://o1-at-home.hashnode.dev/run-o1-at-home-privately-think-respond-pipe-tutorial-with-open-webui-ollama
+version: 0.3.4
 Descrition: Think-Respond pipe that has an internal reasoning steps and another for producing a final response based on the reasoning.
             Now supports openAI api along with ollama, you can mix and match models 
 
@@ -20,7 +21,7 @@ After adding it, enable the pipe to make it active.
 
 Customize Settings:
 Use the configuration menu (accessed via the settings cog) to tailor the pipeline to your needs:
-    Select Models: Choose your desired thinking model and response model.
+    Select Models: Choose your desired thinking models and response model.
     Show Reasoning: Decide whether to display the reasoning process or keep it hidden.
     Set Thinking Time: Specify the maximum time allowed for the reasoning model to process.
 Save and Apply:
@@ -381,6 +382,8 @@ class Pipe:
         self.__user__ = User(**__user__)
         messages = body["messages"]
         query = get_last_user_message(messages)
+
+        print('Task', __task__)
 
         if (
             __task__ == None
