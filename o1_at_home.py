@@ -2,7 +2,7 @@
 title: Think-Respond Chain Pipe, o1 at home
 author: latent-variable
 github: https://github.com/latent-variable/o1_at_home
-version: 0.3.1
+version: 0.3.3
 Descrition: Think-Respond pipe that has an internal reasoning steps and another for producing a final response based on the reasoning.
             Now supports openAI api along with ollama, you can mix and match models 
 
@@ -86,15 +86,16 @@ class Pipe:
 
         MAX_THINKING_TIME: int = Field(
             default=120,
-            description="Maximum time in seconds the thinking model can run.",
+            description="Maximum time in seconds that each thinking model is allowed to run for.",
         )
 
     def __init__(self):
         self.type = "manifold"
         self.valves = self.Valves()
-        self.start_thought_time = None
+        self.total_thinking_tokens = 0
         self.max_thinking_time_reached = False
         self.__user__ = None
+    
 
     def pipes(self):
         name = "o1-"
@@ -204,6 +205,7 @@ class Pipe:
         __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
     ) -> AsyncGenerator[str, None]:
 
+        start_thought_time = time()
         try:
             stream = True
             response = await self.get_response(model, messages, thinking, stream)
@@ -219,7 +221,7 @@ class Pipe:
                         time()
                     )  # check to see if thought time has been exceded
                     if (
-                        current_time - self.start_thought_time
+                        current_time - start_thought_time
                     ) > self.valves.MAX_THINKING_TIME:
                         logger.info(
                             f'Max thinking Time reached in stream_response of thinking model "'
@@ -228,12 +230,17 @@ class Pipe:
                         break
 
         except Exception as e:
-            print("*********", e)
+            if thinking:
+                api = 'openai' if self.valves.USE_OPENAI_API_THINKING_MODEL else 'Ollama'
+                category = 'Thinking'
+            else:
+                api = 'OpenAI' if self.valves.USE_OPENAI_API_RESPONDING_MODEL else 'Ollama'
+                category = 'Responding'
             await __event_emitter__(
                 {
                     "type": "status",
                     "data": {
-                        "description": f"Error: ensure {model} is a valid model option {e}",
+                        "description": f"{category} Error: ensure {model} is a valid model option in the {api} api {e} ",
                         "done": True,
                     },
                 }
@@ -280,6 +287,7 @@ class Pipe:
         messages[-1] = thinking_messages
 
         reasoning = ""
+        reasoning_tokens = 0
         thinking = True
         if self.valves.ENABLE_SHOW_THINKING_TRACE and n != 1:
             await __event_emitter__(
@@ -292,7 +300,7 @@ class Pipe:
             model.strip(), messages, thinking, __event_emitter__
         ):
             reasoning += chunk
-            reasoning_chars = len(reasoning)
+            reasoning_tokens += 1
             if self.valves.ENABLE_SHOW_THINKING_TRACE:
                 # Emit chunk as a "thinking" type message
                 await __event_emitter__(
@@ -303,7 +311,7 @@ class Pipe:
                 )
             else:
                     await __event_emitter__(
-                        {"type": "status", "data": {"description": f"Thinking {thinking_with} ({reasoning_chars} chars)", "done": False}}
+                        {"type": "status", "data": {"description": f"Thinking {thinking_with} ({reasoning_tokens} tokens)", "done": False}}
                     )
 
         await __event_emitter__(
@@ -312,6 +320,7 @@ class Pipe:
                 "data": {"description": f"Finished thinking {thinking_with}", "done": False},
             }
         )
+        self.total_thinking_tokens += reasoning_tokens
         await asyncio.sleep(0.2)
         return reasoning.strip()
 
@@ -368,7 +377,6 @@ class Pipe:
     ) -> str:
 
         # Get relavant info
-        self.start_thought_time = time()
         self.__user__ = User(**__user__)
         messages = body["messages"]
         query = get_last_user_message(messages)
@@ -377,10 +385,11 @@ class Pipe:
             __task__ == None
         ):  # only perform thinking when not a defined task like title generation
             # Run the "thinking" step
-            #Clone the messages to avoid changing the original
+            # Clone the messages to avoid changing the original
+            tik = time()
             models = self.valves.THINKING_MODEL.split(",")
             reasonings = [await self.run_thinking(model + 1, len(models), models[model], messages, query, __event_emitter__) for model in range(len(models))]
-            thought_duration = int(time() - self.start_thought_time)
+            total_thought_duration = int(time() - tik)
 
             # Run the "responding" step using the reasoning
             await self.run_responding(messages, query, reasonings, __event_emitter__)
@@ -390,7 +399,7 @@ class Pipe:
                     {
                         "type": "status",
                         "data": {
-                            "description": f"Thought for max allowed time of {thought_duration} seconds",
+                            "description": f"Thought for {self.total_thinking_tokens} tokens in max allowed time of {total_thought_duration} seconds",
                             "done": True,
                         },
                     }
@@ -400,7 +409,7 @@ class Pipe:
                     {
                         "type": "status",
                         "data": {
-                            "description": f"Thought for only {thought_duration} seconds",
+                            "description": f"Thought for only {self.total_thinking_tokens} tokens in {total_thought_duration} seconds",
                             "done": True,
                         },
                     }
