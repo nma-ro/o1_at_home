@@ -255,13 +255,16 @@ class Pipe:
         await self.send_data("\n### "+title_name+"\n", thinking, __event_emitter__)
 
         response_text = ""
+        num_tokens = 0
         async for chunk in self.stream_response(
             model.strip(), messages, thinking, __event_emitter__
         ):
             response_text += chunk
+            num_tokens += 1
             await self.send_data(chunk, thinking, __event_emitter__)
-            await self.set_status(f"{step_name} ({len(response_text)} chars)", __event_emitter__)
-        
+            await self.set_status(f"{step_name} ({num_tokens} tokens)", __event_emitter__)
+        if thinking:
+            self.total_thinking_tokens += num_tokens
         return response_text.strip()
 
     async def run_thinking(
