@@ -352,7 +352,7 @@ class Pipe:
             thought_duration = int(time() - self.start_thought_time)
 
             # Run the "responding" step using the reasoning
-            response = await self.run_responding(messages, query, reasonings, True, __event_emitter__)
+            await self.run_responding(messages, query, reasonings, True, __event_emitter__)
 
             if self.max_thinking_time_reached:
                 await self.set_status_end(f"Thought for max allowed time of {thought_duration} seconds", __event_emitter__)
