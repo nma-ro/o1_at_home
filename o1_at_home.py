@@ -2,6 +2,7 @@
 title: Think-Respond Chain Pipe, o1 at home
 author: latent-variable
 github: https://github.com/latent-variable/o1_at_home
+open-webui: https://openwebui.com/f/latentvariable/o1_at_home/
 version: 0.3.3
 Descrition: Think-Respond pipe that has an internal reasoning steps and another for producing a final response based on the reasoning.
             Now supports openAI api along with ollama, you can mix and match models 
@@ -12,7 +13,7 @@ To use the o1 at home pipe, follow these steps:
 Add the Pipe Manifold:
 Navigate to the Admin Panel and add the pipe to the list of available "Functions" using the '+'.
 This is not a "pipeline", Ensure you are using Function tab. 
-If you are copying the code you might need ot give it name and descriprition 
+If you are copying the code you might need to give it name and descriprition 
 
 Enable the Pipe Manifold:
 After adding it, enable the pipe to make it active.
