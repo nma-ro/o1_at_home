@@ -186,15 +186,7 @@ class Pipe:
             response = await self.get_response(model, messages, thinking, stream)
             return response["choices"][0]["message"]["content"]
         except Exception as e:
-            await __event_emitter__(
-                {
-                    "type": "status",
-                    "data": {
-                        "description": f"Error: ensure {model} is a valid model option {e}",
-                        "done": True,
-                    },
-                }
-            )
+            await self.set_status_end(f"Error: Is {model} a valid model? ({e})", __event_emitter__)
         finally:
             if response and hasattr(response, "close"):
                 await response.close()
@@ -238,19 +230,42 @@ class Pipe:
             else:
                 api = 'OpenAI' if self.valves.USE_OPENAI_API_RESPONDING_MODEL else 'Ollama'
                 category = 'Responding'
-            await __event_emitter__(
-                {
-                    "type": "status",
-                    "data": {
-                        "description": f"{category} Error: ensure {model} is a valid model option in the {api} api {e} ",
-                        "done": True,
-                    },
-                }
-            )
+            await self.set_status_end(f"{category} Error: ensure {model} is a valid model option in the {api} api {e}", __event_emitter__)
 
         finally:
             if response and hasattr(response, "close"):
                 await response.close()
+
+    async def run_step(
+        self,
+        model: str,
+        messages: list,
+        prompt: str,
+        thinking: bool,
+        step_name: str,
+        title_name: str,
+        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+    ) -> str:
+        messages = json.loads(json.dumps(messages))
+        messages[-1] = {
+            "role": "user",
+            "content": prompt,
+        }
+        
+        await self.send_data("\n### "+title_name+"\n", thinking, __event_emitter__)
+
+        response_text = ""
+        num_tokens = 0
+        async for chunk in self.stream_response(
+            model.strip(), messages, thinking, __event_emitter__
+        ):
+            response_text += chunk
+            num_tokens += 1
+            await self.send_data(chunk, thinking, __event_emitter__)
+            await self.set_status(f"{step_name} ({num_tokens} tokens)", __event_emitter__)
+        if thinking:
+            self.total_thinking_tokens += num_tokens
+        return response_text.strip()
 
     async def run_thinking(
         self,
@@ -262,15 +277,11 @@ class Pipe:
         __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
     ) -> str:
         # Deep copy the messages to avoid changing the original
-        messages = json.loads(json.dumps(messages))
         thinking_with = ""
         if n == 1:
             thinking_with = f"with {model}"
         else:
             thinking_with = f"with {model} {k}/{n}"
-        await __event_emitter__(
-            {"type": "status", "data": {"description": f"Thinking {thinking_with}", "done": False}}
-        )
 
         prompt = "You are a reasoning model.\n"
         prompt += "Think carefully about the user's request and output your reasoning steps.\n"
@@ -280,95 +291,55 @@ class Pipe:
         prompt += "First rephrase the user prompt, then answer using multiple thinking-path to give all possible answers.\n"
         prompt += f"User Query: {query}"
 
-        # We will stream the reasoning steps. The reasoning prompt:
-        thinking_messages = {
-            "role": "user",
-            "content": prompt,
-        }
-        # replace last message
-        messages[-1] = thinking_messages
-
-        reasoning = ""
-        reasoning_tokens = 0
-        thinking = True
-        if self.valves.ENABLE_SHOW_THINKING_TRACE and n != 1:
-            await __event_emitter__(
-                {
-                    "type": "message",
-                    "data": {"content": "\n### Thinking with "+model+"\n", "role": "assistant-thinking"},
-                }
-            )
-        async for chunk in self.stream_response(
-            model.strip(), messages, thinking, __event_emitter__
-        ):
-            reasoning += chunk
-            reasoning_tokens += 1
-            if self.valves.ENABLE_SHOW_THINKING_TRACE:
-                # Emit chunk as a "thinking" type message
-                await __event_emitter__(
-                    {
-                        "type": "message",
-                        "data": {"content": chunk, "role": "assistant-thinking"},
-                    }
-                )
-            else:
-                    await __event_emitter__(
-                        {"type": "status", "data": {"description": f"Thinking {thinking_with} ({reasoning_tokens} tokens)", "done": False}}
-                    )
-
-        await __event_emitter__(
-            {
-                "type": "status",
-                "data": {"description": f"Finished thinking {thinking_with}", "done": False},
-            }
+        reasoning = await self.run_step(
+            model, messages, prompt, True, f"Thinking {thinking_with}", f"`{model}` thoughts", __event_emitter__
         )
-        self.total_thinking_tokens += reasoning_tokens
+
+        await self.set_status(f"Finished thinking {thinking_with}", __event_emitter__)
+
         await asyncio.sleep(0.2)
-        return reasoning.strip()
+        return reasoning
 
     async def run_responding(
         self,
         messages: list,
         query: str,
         reasonings: list,
+        is_final_step: bool,
         __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
-    ) -> Dict[str, Any]:
-        await __event_emitter__(
-            {
-                "type": "status",
-                "data": {"description": "Formulating response...", "done": False},
-            }
-        )
+    ) -> str:
+        await self.set_status("Formulating response...", __event_emitter__)
+
         prompt = "Here is some internal reasoning to guide your response:\n"
         prompt += f"<reasoning>{reasonings[0]}<reasoning-end>\n"
         for reasoning in reasonings[1:]:
-            prompt = "Here is some other internal reasoning to guide your response:\n"
+            prompt += "Here is some other internal reasoning to guide your response:\n"
             prompt += f"<reasoning>{reasoning}<reasoning-end>\n"
         prompt += f"Use this reasoning to respond in concise and helpful manner to the user's query: {query}"
 
-        responding_messages = {
-            "role": "user",
-            "content": prompt
-        }
-        # replace last message
-        messages[-1] = responding_messages
-
-        response_text = "\n\n### Response:\n"
-        await __event_emitter__(
-            {"type": "message", "data": {"content": response_text, "role": "assistant"}}
+        response_text = await self.run_step(
+            self.valves.RESPONDING_MODEL.strip(), messages, prompt, not is_final_step, "Generating response", "Response", __event_emitter__
         )
 
-        thinking = False
-        async for chunk in self.stream_response(
-            self.valves.RESPONDING_MODEL.strip(), messages, thinking, __event_emitter__
-        ):
-            response_text += chunk
-            # Emit response chunks as assistant message
-            await __event_emitter__(
-                {"type": "message", "data": {"content": chunk, "role": "assistant"}}
-            )
-
         await asyncio.sleep(0.2)
+        return response_text
+    
+    async def run_thinking_pipeline(
+        self,
+        k: int,
+        models: list,
+        messages: list,
+        query: str,
+        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+    ) -> str:
+        response = await self.run_thinking(k + 1, len(models), models[k], messages, query, __event_emitter__)
+
+        # If you want to implement some custom logic after the initial thoughts, you can do so here
+        # For instance, you could implement reflections or CoT (Chain of Thought) here
+        
+        return response
+        
+        
 
     async def pipe(
         self,
@@ -392,35 +363,30 @@ class Pipe:
             # Clone the messages to avoid changing the original
             tik = time()
             models = self.valves.THINKING_MODEL.split(",")
-            reasonings = [await self.run_thinking(model + 1, len(models), models[model], messages, query, __event_emitter__) for model in range(len(models))]
+            reasonings = [await self.run_thinking_pipeline(model, models, messages, query, __event_emitter__) for model in range(len(models))]
             total_thought_duration = int(time() - tik)
 
             # Run the "responding" step using the reasoning
-            await self.run_responding(messages, query, reasonings, __event_emitter__)
+            await self.run_responding(messages, query, reasonings, True, __event_emitter__)
 
             if self.max_thinking_time_reached:
-                await __event_emitter__(
-                    {
-                        "type": "status",
-                        "data": {
-                            "description": f"Thought for {self.total_thinking_tokens} tokens in max allowed time of {total_thought_duration} seconds",
-                            "done": True,
-                        },
-                    }
-                )
+                await self.set_status_end(f"Thought for {self.total_thinking_tokens} tokens in max allowed time of {total_thought_duration} seconds", __event_emitter__)
             else:
-                await __event_emitter__(
-                    {
-                        "type": "status",
-                        "data": {
-                            "description": f"Thought for only {self.total_thinking_tokens} tokens in {total_thought_duration} seconds",
-                            "done": True,
-                        },
-                    }
-                )
+                await self.set_status_end(f"Thought for only {self.total_thinking_tokens} tokens in {total_thought_duration} seconds", __event_emitter__)
             return ""
         else:
             # avoid thinking and just return a regular response or named task, like tags
             return await self.get_completion(
                 self.valves.RESPONDING_MODEL.strip(), messages, __event_emitter__
             )
+
+    async def set_status(self, description: str, __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None):
+        await __event_emitter__({"type": "status", "data": {"description": description, "done": False}})
+
+    async def send_data(self, data: str, thinking: bool, __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None):
+        if not thinking or self.valves.ENABLE_SHOW_THINKING_TRACE:
+            await __event_emitter__({"type": "message", "data": {"content": data, "role": "assistant-thinking" if thinking else "assistant"}})
+    
+    async def set_status_end(self, data: str, __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None):
+        await __event_emitter__({"type": "status", "data": {"description": data, "done": True}})
+            
