@@ -1,5 +1,6 @@
 """
 title: Think-Respond Chain Pipe, o1 at home
+This version addresses this issue : https://github.com/latent-variable/o1_at_home/issues/4
 author: latent-variable
 github: https://github.com/latent-variable/o1_at_home
 open-webui: https://openwebui.com/f/latentvariable/o1_at_home/
