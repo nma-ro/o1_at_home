@@ -4,7 +4,7 @@ author: latent-variable
 github: https://github.com/latent-variable/o1_at_home
 open-webui: https://openwebui.com/f/latentvariable/o1_at_home/
 Blog post: https://o1-at-home.hashnode.dev/run-o1-at-home-privately-think-respond-pipe-tutorial-with-open-webui-ollama
-version: 0.3.5
+version: 0.4
 Descrition: Think-Respond pipe that has an internal reasoning steps and another for producing a final response based on the reasoning.
             Now supports openAI api along with ollama, you can mix and match models 
 
@@ -37,9 +37,11 @@ from pydantic import BaseModel, Field
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Callable, Awaitable, Any, AsyncGenerator
 import asyncio
+from fastapi import Request
 from open_webui.utils.misc import get_last_user_message
-from open_webui.apps.openai import main as openai
-from open_webui.apps.ollama import main as ollama
+from open_webui.main import chat_completion
+from open_webui.routers.ollama import generate_chat_completion as ollama_chat_completion
+from open_webui.routers.openai import generate_chat_completion as openai_chat_completion
 import logging
 
 logger = logging.getLogger(__name__)
@@ -112,29 +114,29 @@ class Pipe:
 
         Args:
             chunk (bytes): The raw byte content received from the API stream.
-            api (str): The source API, either 'openai' or 'ollama'.
 
         Yields:
-            str: The extracted content from the chunk, if available.
+            str: The extracted content from the chunk's 'message' field, if available.
         """
         chunk_str = chunk.decode("utf-8").strip()
 
-        # Split the chunk by double newlines (OpenAI separates multiple data entries with this)
-        for part in chunk_str.split("\n\n"):
-            part = part.strip()  # Remove extra whitespace
-            if part.startswith("data: "):
-                part = part[6:]  # Remove "data: " prefix for OpenAI chunks
-
-            if not part or part == "[DONE]":
-                continue  # Skip empty or end markers
+        # Split the chunk by newlines in case of multiple entries
+        for part in chunk_str.split("\n"):
+            part = part.strip()
+            if not part:
+                continue  # Skip empty parts
 
             try:
                 chunk_data = json.loads(part)
-                if "choices" in chunk_data and len(chunk_data["choices"]) > 0:
-                    delta = chunk_data["choices"][0].get("delta", {})
-                    content = delta.get("content", "")
-                    if content:  # Only yield non-empty content
-                        yield content
+
+                # Ensure the chunk contains the expected keys
+                if "message" in chunk_data and "content" in chunk_data["message"]:
+                    yield chunk_data["message"]["content"]
+
+                # Handle the "done" field if necessary
+                if chunk_data.get("done", False):
+                    break
+
             except json.JSONDecodeError as e:
                 logger.error(f'ChunkDecodeError: unable to parse "{part[:100]}": {e}')
 
@@ -162,13 +164,13 @@ class Pipe:
 
         # Select the appropriate API and identify the source
         if use_openai_api:
-            generate_completion = openai.generate_chat_completion
+            generate_completion = openai_chat_completion
         else:
-            generate_completion = ollama.generate_openai_chat_completion
+            generate_completion = ollama_chat_completion
 
         # Generate response
-        response = await generate_completion(
-            {"model": model, "messages": messages, "stream": stream}, user=self.__user__
+        response = await generate_completion( self.__request__, 
+            {"model": model, "messages": messages, "stream": stream}, user=self.__user__, 
         )
 
         return response
@@ -231,7 +233,6 @@ class Pipe:
                 api = 'OpenAI' if self.valves.USE_OPENAI_API_RESPONDING_MODEL else 'Ollama'
                 category = 'Responding'
             await self.set_status_end(f"{category} Error: ensure {model} is a valid model option in the {api} api {e}", __event_emitter__)
-
         finally:
             if response and hasattr(response, "close"):
                 await response.close()
@@ -285,9 +286,7 @@ class Pipe:
 
         prompt = "You are a reasoning model.\n"
         prompt += "Think carefully about the user's request and output your reasoning steps.\n"
-        prompt += (
-            "Do not answer the user directly, just produce a hidden reasoning chain.\n"
-        )
+        prompt += "Do not answer the user directly, just produce a hidden reasoning chain.\n"
         prompt += "First rephrase the user prompt, then answer using multiple thinking-path to give all possible answers.\n"
         prompt += f"User Query: {query}"
 
@@ -339,22 +338,21 @@ class Pipe:
         
         return response
         
-        
-
     async def pipe(
         self,
         body: dict,
         __user__: dict,
-        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]],
+        __request__: Request,
         __task__=None,
     ) -> str:
 
+        print(__event_emitter__)
         # Get relavant info
         self.__user__ = User(**__user__)
+        self.__request__ = __request__
         messages = body["messages"]
         query = get_last_user_message(messages)
-
-        print('Task', __task__)
 
         if (
             __task__ == None
