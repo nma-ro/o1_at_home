@@ -6,15 +6,15 @@ open-webui: https://openwebui.com/f/latentvariable/o1_at_home/
 Blog post: https://o1-at-home.hashnode.dev/run-o1-at-home-privately-think-respond-pipe-tutorial-with-open-webui-ollama
 version: 0.4
 Descrition: Think-Respond pipe that has an internal reasoning steps and another for producing a final response based on the reasoning.
-            Now supports openAI api along with ollama, you can mix and match models 
+            Now supports openAI api along with ollama, you can mix and match models
 
-Instructions: 
+Instructions:
 To use the o1 at home pipe, follow these steps:
 
 Add the Pipe Manifold:
 Navigate to the Admin Panel and add the pipe to the list of available "Functions" using the '+'.
-This is not a "pipeline", Ensure you are using Function tab. 
-If you are copying the code you might need to give it name and descriprition 
+This is not a "pipeline", Ensure you are using Function tab.
+If you are copying the code you might need to give it name and descriprition
 
 Enable the Pipe Manifold:
 After adding it, enable the pipe to make it active.
@@ -26,7 +26,7 @@ Use the configuration menu (accessed via the settings cog) to tailor the pipelin
     Set Thinking Time: Specify the maximum time allowed for the reasoning model to process.
 Save and Apply:
 Once configured, save your settings to apply the changes.
-You should now have o1 at home in your dorp down. 
+You should now have o1 at home in your dorp down.
 
 These steps ensure the pipe is set up correctly and functions according to your requirements.
 """
@@ -99,7 +99,6 @@ class Pipe:
         self.total_thinking_tokens = 0
         self.max_thinking_time_reached = False
         self.__user__ = None
-    
 
     def pipes(self):
         name = "o1-"
@@ -127,21 +126,28 @@ class Pipe:
                 continue  # Skip empty parts
 
             try:
+                part = part.replace("data: ", "")
+
+                # Handle the "done" field if necessary
+                if part == "[DONE]":
+                    break
+
                 chunk_data = json.loads(part)
 
                 # Ensure the chunk contains the expected keys
-                if "message" in chunk_data and "content" in chunk_data["message"]:
-                    yield chunk_data["message"]["content"]
+                if "choices" in chunk_data and isinstance(chunk_data["choices"], list) and len(
+                        chunk_data["choices"]) > 0:
+                    yield chunk_data["choices"][0]["delta"]["content"]
 
                 # Handle the "done" field if necessary
                 if chunk_data.get("done", False):
                     break
 
             except json.JSONDecodeError as e:
-                logger.error(f'ChunkDecodeError: unable to parse "{part[:100]}": {e}')
+                logger.error(f'ChunkDecodeError: unable to parse "{part[:1000]}": {e}')
 
     async def get_response(
-        self, model: str, messages: List[Dict[str, str]], thinking: bool, stream: bool
+            self, model: str, messages: List[Dict[str, str]], thinking: bool, stream: bool
     ):
         """
         Generate a response from the appropriate API based on the provided flags.
@@ -169,17 +175,18 @@ class Pipe:
             generate_completion = ollama_chat_completion
 
         # Generate response
-        response = await generate_completion( self.__request__, 
-            {"model": model, "messages": messages, "stream": stream}, user=self.__user__, 
-        )
+        response = await generate_completion(self.__request__,
+                                             {"model": model, "messages": messages, "stream": stream},
+                                             user=self.__user__,
+                                             )
 
         return response
 
     async def get_completion(
-        self,
-        model: str,
-        messages: list,
-        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+            self,
+            model: str,
+            messages: list,
+            __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
     ):
         response = None
         try:
@@ -194,11 +201,11 @@ class Pipe:
                 await response.close()
 
     async def stream_response(
-        self,
-        model: str,
-        messages: List[Dict[str, str]],
-        thinking: bool,
-        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+            self,
+            model: str,
+            messages: List[Dict[str, str]],
+            thinking: bool,
+            __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
     ) -> AsyncGenerator[str, None]:
 
         start_thought_time = time()
@@ -206,7 +213,7 @@ class Pipe:
             stream = True
             response = await self.get_response(model, messages, thinking, stream)
             while True:
-                chunk = await response.body_iterator.read(1024)
+                chunk = await response.body_iterator.readline()
                 if not chunk:  # No more data
                     break
                 for part in self.get_chunk_content(chunk):
@@ -217,7 +224,7 @@ class Pipe:
                         time()
                     )  # check to see if thought time has been exceded
                     if (
-                        current_time - start_thought_time
+                            current_time - start_thought_time
                     ) > self.valves.MAX_THINKING_TIME:
                         logger.info(
                             f'Max thinking Time reached in stream_response of thinking model "'
@@ -232,33 +239,34 @@ class Pipe:
             else:
                 api = 'OpenAI' if self.valves.USE_OPENAI_API_RESPONDING_MODEL else 'Ollama'
                 category = 'Responding'
-            await self.set_status_end(f"{category} Error: ensure {model} is a valid model option in the {api} api {e}", __event_emitter__)
+            await self.set_status_end(f"{category} Error: ensure {model} is a valid model option in the {api} api {e}",
+                                      __event_emitter__)
         finally:
             if response and hasattr(response, "close"):
                 await response.close()
 
     async def run_step(
-        self,
-        model: str,
-        messages: list,
-        prompt: str,
-        thinking: bool,
-        step_name: str,
-        title_name: str,
-        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+            self,
+            model: str,
+            messages: list,
+            prompt: str,
+            thinking: bool,
+            step_name: str,
+            title_name: str,
+            __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
     ) -> str:
         messages = json.loads(json.dumps(messages))
         messages[-1] = {
             "role": "user",
             "content": prompt,
         }
-        
-        await self.send_data("\n### "+title_name+"\n", thinking, __event_emitter__)
+
+        await self.send_data("\n### " + title_name + "\n", thinking, __event_emitter__)
 
         response_text = ""
         num_tokens = 0
         async for chunk in self.stream_response(
-            model.strip(), messages, thinking, __event_emitter__
+                model.strip(), messages, thinking, __event_emitter__
         ):
             response_text += chunk
             num_tokens += 1
@@ -266,16 +274,17 @@ class Pipe:
             await self.set_status(f"{step_name} ({num_tokens} tokens)", __event_emitter__)
         if thinking:
             self.total_thinking_tokens += num_tokens
+
         return response_text.strip()
 
     async def run_thinking(
-        self,
-        k: int,
-        n: int,
-        model: str,
-        messages: list,
-        query: str,
-        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+            self,
+            k: int,
+            n: int,
+            model: str,
+            messages: list,
+            query: str,
+            __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
     ) -> str:
         # Deep copy the messages to avoid changing the original
         thinking_with = ""
@@ -300,12 +309,12 @@ class Pipe:
         return reasoning
 
     async def run_responding(
-        self,
-        messages: list,
-        query: str,
-        reasonings: list,
-        is_final_step: bool,
-        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+            self,
+            messages: list,
+            query: str,
+            reasonings: list,
+            is_final_step: bool,
+            __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
     ) -> str:
         await self.set_status("Formulating response...", __event_emitter__)
 
@@ -317,37 +326,38 @@ class Pipe:
         prompt += f"Use this reasoning to respond in concise and helpful manner to the user's query: {query}"
 
         response_text = await self.run_step(
-            self.valves.RESPONDING_MODEL.strip(), messages, prompt, not is_final_step, "Generating response", "Response", __event_emitter__
+            self.valves.RESPONDING_MODEL.strip(), messages, prompt, not is_final_step, "Generating response",
+            "Response", __event_emitter__
         )
 
         await asyncio.sleep(0.2)
         return response_text
-    
+
     async def run_thinking_pipeline(
-        self,
-        k: int,
-        models: list,
-        messages: list,
-        query: str,
-        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
+            self,
+            k: int,
+            models: list,
+            messages: list,
+            query: str,
+            __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None,
     ) -> str:
         response = await self.run_thinking(k + 1, len(models), models[k], messages, query, __event_emitter__)
 
         # If you want to implement some custom logic after the initial thoughts, you can do so here
         # For instance, you could implement reflections or CoT (Chain of Thought) here
-        
+
         return response
-        
+
     async def pipe(
-        self,
-        body: dict,
-        __user__: dict,
-        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]],
-        __request__: Request,
-        __task__=None,
+            self,
+            body: dict,
+            __user__: dict,
+            __event_emitter__: Optional[Callable[[Any], Awaitable[None]]],
+            __request__: Request,
+            __task__=None,
     ) -> str:
 
-        print(__event_emitter__)
+        # print(__event_emitter__)
         # Get relavant info
         self.__user__ = User(**__user__)
         self.__request__ = __request__
@@ -355,22 +365,27 @@ class Pipe:
         query = get_last_user_message(messages)
 
         if (
-            __task__ == None
+                __task__ == None
         ):  # only perform thinking when not a defined task like title generation
             # Run the "thinking" step
             # Clone the messages to avoid changing the original
             tik = time()
             models = self.valves.THINKING_MODEL.split(",")
-            reasonings = [await self.run_thinking_pipeline(model, models, messages, query, __event_emitter__) for model in range(len(models))]
+            reasonings = [await self.run_thinking_pipeline(model, models, messages, query, __event_emitter__) for model
+                          in range(len(models))]
             total_thought_duration = int(time() - tik)
 
             # Run the "responding" step using the reasoning
             await self.run_responding(messages, query, reasonings, True, __event_emitter__)
 
             if self.max_thinking_time_reached:
-                await self.set_status_end(f"Thought for {self.total_thinking_tokens} tokens in max allowed time of {total_thought_duration} seconds", __event_emitter__)
+                await self.set_status_end(
+                    f"Thought for {self.total_thinking_tokens} tokens in max allowed time of {total_thought_duration} seconds",
+                    __event_emitter__)
             else:
-                await self.set_status_end(f"Thought for only {self.total_thinking_tokens} tokens in {total_thought_duration} seconds", __event_emitter__)
+                await self.set_status_end(
+                    f"Thought for only {self.total_thinking_tokens} tokens in {total_thought_duration} seconds",
+                    __event_emitter__)
             return ""
         else:
             # avoid thinking and just return a regular response or named task, like tags
@@ -381,10 +396,11 @@ class Pipe:
     async def set_status(self, description: str, __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None):
         await __event_emitter__({"type": "status", "data": {"description": description, "done": False}})
 
-    async def send_data(self, data: str, thinking: bool, __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None):
+    async def send_data(self, data: str, thinking: bool,
+                        __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None):
         if not thinking or self.valves.ENABLE_SHOW_THINKING_TRACE:
-            await __event_emitter__({"type": "message", "data": {"content": data, "role": "assistant-thinking" if thinking else "assistant"}})
-    
+            await __event_emitter__({"type": "message", "data": {"content": data,
+                                                                 "role": "assistant-thinking" if thinking else "assistant"}})
+
     async def set_status_end(self, data: str, __event_emitter__: Optional[Callable[[Any], Awaitable[None]]] = None):
         await __event_emitter__({"type": "status", "data": {"description": data, "done": True}})
-            
